@@ -100,7 +100,7 @@ app.use(errorHandler);
 // ================= SERVER START =================
 
 const server = app.listen(PORT, () => {
-  console.log("MONGO_URI:", process.env.MONGO_URI);
+  // console.log("MONGO_URI:", process.env.MONGO_URI);
   console.log(
     `🚀 Server running on port ${PORT} in ${
       process.env.NODE_ENV || "development"
@@ -108,19 +108,19 @@ const server = app.listen(PORT, () => {
   );
 });
 
-// ==============   Graceful shutdown ==============
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  await mongoose.connection.close();
-  console.log('MongoDB connection closed');
-  process.exit(0);
-});
+// // ==============   Graceful shutdown ==============
+// process.on('SIGTERM', async () => {
+//   console.log('SIGTERM received, shutting down gracefully');
+//   await mongoose.connection.close();
+//   console.log('MongoDB connection closed');
+//   process.exit(0);
+// });
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
-  await mongoose.connection.close();
-  console.log('MongoDB connection closed');
-  process.exit(0);
-});
+// process.on('SIGINT', async () => {
+//   console.log('SIGINT received, shutting down gracefully');
+//   await mongoose.connection.close();
+//   console.log('MongoDB connection closed');
+//   process.exit(0);
+// });
 
 module.exports = app;
