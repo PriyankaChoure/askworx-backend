@@ -1,39 +1,65 @@
 const UserSubscription = require('../models/UserSubscription');
 const SubscriptionService = require('../services/subscriptionService');
 
-const checkSubscription = async (req, res, next) => {
+// middleware to ensure user has a currently valid subscription for viewing data
+// automatically deactivates expired records and tags trial users
+const checkSubscriptionValidity = async (req, res, next) => {
   try {
-    const subscription = await UserSubscription.findOne({
+    const now = new Date();
+
+    // find any subscription for the user that hasn't been explicitly deactivated
+    // and where the current date is within the from/to range
+    let subscription = await UserSubscription.findOne({
       user: req.user._id,
       isActive: true,
-      endDate: { $gte: new Date() }
+      startDate: { $lte: now },
+      endDate: { $gte: now }
     }).populate('plan');
 
     if (!subscription) {
+      // if no active window exists, mark any expired subscriptions inactive
+      await UserSubscription.updateMany(
+        { user: req.user._id, isActive: true, toDate: { $lt: now } },
+        { isActive: false }
+      );
       return res.status(403).json({
         message: 'Active subscription required. Please contact admin to renew.',
         code: 'SUBSCRIPTION_EXPIRED'
       });
     }
 
-    // Check if subscription is about to expire (within 7 days)
+    // add warning if ending soon (7 days)
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
 
-    if (subscription.endDate <= sevenDaysFromNow) {
-      req.subscriptionWarning = `Your subscription expires on ${subscription.endDate.toDateString()}`;
+    if (subscription.toDate <= sevenDaysFromNow) {
+      req.subscriptionWarning = `Your subscription expires on ${subscription.toDate.toDateString()}`;
     }
 
     req.subscription = subscription;
+    // expose a flag to identify trial/free users
+    req.isFreeTrialUser = subscription.isTrial || req.user.isFreeSubscriber;
     next();
   } catch (error) {
-    console.error('Subscription check error:', error);
+    console.error('Subscription validation error:', error);
     res.status(500).json({ message: 'Server error during subscription validation' });
   }
 };
 
 const filterDataBySubscription = (data, subscription) => {
   return SubscriptionService.filterDataBySubscription(data, subscription);
+};
+
+// ensure download endpoint is only available to paid subscribers
+const checkDownloadAccess = (req, res, next) => {
+  // subscription validity should already be enforced by previous middleware
+  if (req.user.isFreeSubscriber || (req.subscription && req.subscription.isTrial)) {
+    return res.status(403).json({
+      message: 'Download not permitted for free/trial accounts',
+      code: 'DOWNLOAD_RESTRICTED'
+    });
+  }
+  next();
 };
 
 const validateSubscriptionAccess = (options = {}) => {
@@ -88,7 +114,9 @@ const validateSubscriptionAccess = (options = {}) => {
 };
 
 module.exports = {
-  checkSubscription,
+  checkSubscription: checkSubscriptionValidity,
+  checkSubscriptionValidity,
+  checkDownloadAccess,
   filterDataBySubscription,
   validateSubscriptionAccess
 };

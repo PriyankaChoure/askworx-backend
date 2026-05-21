@@ -99,6 +99,7 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role.name,
         mustResetPassword: user.mustResetPassword,
+        isFreeSubscriber: user.isFreeSubscriber || false
       },
       tokens: {
         accessToken,

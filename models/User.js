@@ -11,7 +11,12 @@ const userSchema = new mongoose.Schema({
   mustResetPassword: { type: Boolean, default: true },
   isFirstLogin: { type: Boolean, default: true },
   passwordResetAt: { type: Date },
-  // subscriptionPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'UserSubscription' },
+  // reference to latest subscription (if needed by queries)
+  subscription: { type: mongoose.Schema.Types.ObjectId, ref: 'UserSubscription' },
+
+  // free/trial users cannot download data
+  isFreeSubscriber: { type: Boolean, default: false },
+
   // allowedSectors: {type: Array},
   // allowedStates: { type: Array},
   createdAt: { type: Date, default: Date.now },

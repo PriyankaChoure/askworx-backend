@@ -48,6 +48,21 @@ module.exports = async () => {
           { upsert: true, new: true }
         );
 
+        // optional trial plan for testing free/limited access
+        const trialPlan = await SubscriptionPlan.findOneAndUpdate(
+          { name: 'Trial Plan' },
+          {
+            name: 'Trial Plan',
+            description: 'Free trial (view only, no downloads)',
+            planType: 'TRIAL',
+            features: ['View data only'],
+            limits: { projects: -1, downloads: 0 },
+            duration: 0, // duration ignored when explicit dates are provided
+            price: 0,
+          },
+          { upsert: true, new: true }
+        );
+
     console.log("✅ Plans Master Data Seeded");
   } catch (error) {
     console.error("❌ Error in Master Data Seed:", error);

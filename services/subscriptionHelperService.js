@@ -133,10 +133,10 @@ const SubscriptionHelperService = {
     const remainingTime = this.formatRemainingTime(subscription.endDate);
 
     return {
-      planName: subscription.plan.name,
-      planType: subscription.plan.planType,
-      startDate: subscription.startDate,
-      endDate: subscription.endDate,
+      planName: subscription.plan ? subscription.plan.name : 'Free/Trial',
+      planType: subscription.plan ? subscription.plan.planType : 'TRIAL',
+      startDate: subscription.fromDate || subscription.startDate,
+      endDate: subscription.toDate || subscription.endDate,
       allowedStates: subscription.allowedStates,
       allowedSectors: subscription.allowedSectors,
       isPanIndia: subscription.isPanIndia,
@@ -150,7 +150,8 @@ const SubscriptionHelperService = {
       remainingTimeUnit: remainingTime.unit,
       warningMessage: expiryStatus.isExpiring
         ? 'Your subscription is about to expire. Please renew it.'
-        : null
+        : null,
+      isTrial: subscription.isTrial || false
     };
   }
 };

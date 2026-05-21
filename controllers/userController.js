@@ -31,7 +31,11 @@ exports.getSubscription = async (req, res) => {
 
     // Use subscription helper to get formatted summary with expiry info
     const formattedSummary = SubscriptionHelperService.getFormattedSubscriptionSummary(subscription);
-    console.log('formattedSummary -', formattedSummary);
+
+    // add free/trial flag from user or subscription
+    formattedSummary.isFreeSubscriber = req.user.isFreeSubscriber || false;
+    formattedSummary.isTrial = subscription.isTrial;
+
     res.json(formattedSummary);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -132,6 +136,14 @@ exports.getProjects = async (req, res) => {
 
 exports.exportProjectsToExcel = async (req, res) => {
   try {
+    // final sanity check in controller layer
+    if (req.user.isFreeSubscriber || (req.subscription && req.subscription.isTrial)) {
+      return res.status(403).json({
+        message: 'Download not permitted for free/trial accounts',
+        code: 'DOWNLOAD_RESTRICTED'
+      });
+    }
+
     const XLSX = require('xlsx');
     const { months, sectors } = req.query;
 

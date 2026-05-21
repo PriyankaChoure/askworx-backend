@@ -45,7 +45,7 @@ const statesToSeed = [
 const sectorsToSeed = [  
   { name: 'Industrial' },
   { name: 'Residential & Commercial' },
-  { name: 'Govt' },
+  { name: 'Government' },
 ];
 
 module.exports = async () => {

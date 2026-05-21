@@ -1,7 +1,7 @@
 const express = require('express');
 const userController = require('../controllers/userController');
 const auth = require('../middleware/auth');
-const { checkSubscription, validateSubscriptionAccess } = require('../middleware/subscription');
+const { checkSubscriptionValidity, checkDownloadAccess, validateSubscriptionAccess, checkSubscription } = require('../middleware/subscription');
 const checkFirstLogin = require('../middleware/firstLogin');
 
 const router = express.Router();
@@ -20,10 +20,10 @@ router.put('/profile', userController.updateProfile);
 router.get('/subscription-plans', userController.getSubscription);
 
 // Protected data (requires active subscription)
-router.get('/projects', checkSubscription, userController.getProjects);
+router.get('/projects', checkSubscriptionValidity, userController.getProjects);
 
-// Export projects to Excel (requires active subscription)
-router.get('/projects/export/excel', checkSubscription, userController.exportProjectsToExcel);
+// Export projects to Excel (requires active paid subscription)
+router.get('/projects/export/excel', checkSubscriptionValidity, checkDownloadAccess, userController.exportProjectsToExcel);
 
 // Get single project (with subscription filtering)
 router.get('/projects/:id', checkSubscription, async (req, res) => {

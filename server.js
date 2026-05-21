@@ -106,6 +106,24 @@ const server = app.listen(PORT, () => {
       process.env.NODE_ENV || "development"
     } mode`
   );
+
+  // schedule daily cleanup of expired subscriptions
+  // const cron = require('node-cron');
+  // const UserSubscription = require('./models/UserSubscription');
+  // cron.schedule('0 0 * * *', async () => {
+  //   try {
+  //     const now = new Date();
+  //     const result = await UserSubscription.updateMany(
+  //       { isActive: true, toDate: { $lt: now } },
+  //       { isActive: false }
+  //     );
+  //     if (result.modifiedCount) {
+  //       console.log(`${result.modifiedCount} subscription(s) auto-expired`);
+  //     }
+  //   } catch (err) {
+  //     console.error('Error running subscription cleanup job:', err);
+  //   }
+  // });
 });
 
 // // ==============   Graceful shutdown ==============

@@ -5,6 +5,14 @@ const UserSubscription = require('../models/UserSubscription');
 const AuditLog = require('../models/AuditLog');
 const MasterDataValidationService = require('../services/masterDataValidationService');
 
+const normalizeDateInput = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00.000Z`);
+  }
+  return new Date(value);
+};
+
 exports.getUsers = async (req, res) => {
   try {
     const users = await User.find()
@@ -26,6 +34,7 @@ exports.getUsers = async (req, res) => {
       username: user.username,
       role: user.role?.name || 'User',
       subscriptionPlan: user.subscription?.plan?.name || null,
+      isFreeSubscriber: user.isFreeSubscriber || false,
       status: user.isActive ? 'active' : 'inactive',
       createdAt: user.createdAt,
       subscriptionEndDate: user.subscription?.endDate || null
@@ -40,8 +49,15 @@ exports.getUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, role, subscriptionPlan, allowedSectors, allowedStates, username, password } = req.body;
-
+    const { name, email, role, subscriptionPlan, allowedSectors, allowedStates, username, password, isFreeSubscriber } = req.body;
+    const subscriptionPayload = req.body.subscription || {};
+    const startDate = subscriptionPayload.startDate || req.body.startDate;
+    const endDate = subscriptionPayload.endDate || req.body.endDate;
+    console.info('Received create user request with data:', {
+      name,
+      email,
+      subscriptionPayload,
+    });
     // Find the role
     const userRole = await Role.findOne({ name: role === 'admin' ? 'Super Admin' : 'User' });
     if (!userRole) {
@@ -59,44 +75,49 @@ exports.createUser = async (req, res) => {
     await user.save();
 
     // Assign subscription if provided
-    if (subscriptionPlan) {
-      const plan = await SubscriptionPlan.findById(subscriptionPlan);
-      if (plan) {
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + plan.duration);
+    if (subscriptionPlan || isFreeSubscriber) {
+      // admin may supply a paid plan, or mark the user as free/trial
+      const plan = subscriptionPlan ? await SubscriptionPlan.findById(subscriptionPlan) : null;
 
-        // let allowedStates = [];
-        let isPanIndia = false;
-        // const activeSectors = await MasterDataValidationService.getActiveSectors();
-        // const allowedSectors = activeSectors.map(s => s._id);
-
-        // Set defaults based on plan type
-        switch (plan.planType) {
-          case 'PLAN_1':
-            // For PLAN_1, admin needs to specify the state, but for now, leave empty
-            break;
-          case 'PLAN_2':
-            // For PLAN_2, admin needs to specify states
-            break;
-          case 'PLAN_3':
-            isPanIndia = true;
-            break;
-        }
-
-        const subscription = new UserSubscription({
-          user: user._id,
-          plan: subscriptionPlan,
-          endDate,
-          paymentStatus: 'paid',
-          allowedStates,
-          allowedSectors,
-          isPanIndia,
-        });
-
-        await subscription.save();
-        user.subscription = subscription._id;
-        await user.save();
+      const now = new Date();
+      const start = startDate ? normalizeDateInput(startDate) : now;
+      const end = endDate
+        ? normalizeDateInput(endDate)
+        : plan
+        ? new Date(new Date(start).setMonth(start.getMonth() + plan.duration))
+        : start;
+      console.info('Calculated subscription dates:', { start, end });
+      let isPanIndia = false;
+      switch (plan && plan.planType) {
+        case 'PLAN_3':
+          isPanIndia = true;
+          break;
+        default:
+          break;
       }
+
+      const activeSectors = await MasterDataValidationService.getActiveSectors();
+      const defaultSectors = activeSectors.map(s => s._id);
+
+      const subscription = new UserSubscription({
+        user: user._id,
+        plan: subscriptionPlan || null,
+        fromDate: start,
+        toDate: end,
+        startDate: start,
+        endDate: end,
+        paymentStatus: 'paid',
+        allowedStates,
+        allowedSectors: allowedSectors || defaultSectors,
+        isPanIndia,
+        isTrial: !!isFreeSubscriber,
+        isActive: true,
+      });
+
+      await subscription.save();
+      user.subscription = subscription._id;
+      if (isFreeSubscriber) user.isFreeSubscriber = true;
+      await user.save();
     }
 
     // Log user creation
@@ -191,36 +212,67 @@ exports.deactivatePlan = async (req, res) => {
 
 exports.assignPlan = async (req, res) => {
   try {
-    const { userId, planId, allowedStates, allowedSectors, isPanIndia } = req.body;
+    const {
+      userId,
+      planId,
+      allowedStates,
+      allowedSectors,
+      isPanIndia,
+      startDate,
+      endDate,
+      isTrial // front-end may supply a flag instead of using a "trial" plan record
+    } = req.body;
+
     const plan = await SubscriptionPlan.findById(planId);
-    if (!plan) {
+    if (!plan && !isTrial) {
       return res.status(404).json({ message: 'Plan not found' });
     }
 
-    // Validate subscription rules
+    // validate rules only if a normal paid plan
     const SubscriptionService = require('../services/subscriptionService');
-    SubscriptionService.validateSubscriptionRules(plan.planType, allowedStates || [], isPanIndia || false);
+    if (!isTrial) {
+      SubscriptionService.validateSubscriptionRules(plan.planType, allowedStates || [], isPanIndia || false);
+    }
 
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + plan.duration);
+    // date range validation
+    const now = new Date();
+    const start = startDate ? new Date(startDate) : now;
+    const end = endDate ? new Date(endDate) : new Date(start);
+
+    if (end < start) {
+      return res.status(400).json({ message: 'endDate must be after startDate' });
+    }
+
+    // default duration when not provided (e.g. trial may pass explicit range)
+    if (!toDate && plan) {
+      end.setMonth(start.getMonth() + plan.duration);
+    }
 
     // Get active sectors for default
     const activeSectors = await MasterDataValidationService.getActiveSectors();
     const defaultSectors = activeSectors.map(s => s._id);
 
-    const subscription = new UserSubscription({
+    const subscriptionData = {
       user: userId,
-      plan: planId,
-      endDate,
+      plan: planId || null,
+      fromDate: start,
+      toDate: end,
+      startDate: start,
+      endDate: end,
       paymentStatus: 'paid',
       allowedStates: allowedStates || [],
       allowedSectors: allowedSectors || defaultSectors,
       isPanIndia: isPanIndia || false,
-    });
+      isTrial: !!isTrial
+    };
 
+    const subscription = new UserSubscription(subscriptionData);
     await subscription.save();
 
-    await User.findByIdAndUpdate(userId, { subscription: subscription._id });
+    // update user record
+    const userUpdates = { subscription: subscription._id };
+    if (isTrial) userUpdates.isFreeSubscriber = true;
+    await User.findByIdAndUpdate(userId, userUpdates);
 
     res.json({ message: 'Plan assigned successfully' });
   } catch (error) {
