@@ -14,7 +14,7 @@ const checkSubscriptionValidity = async (req, res, next) => {
       isActive: true,
       startDate: { $lte: now },
       endDate: { $gte: now }
-    }).populate('plan');
+    }).populate('plan').populate('allowedStates').populate('allowedSectors');
 
     if (!subscription) {
       // if no active window exists, mark any expired subscriptions inactive

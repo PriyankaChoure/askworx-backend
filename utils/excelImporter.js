@@ -5,6 +5,7 @@ const XLSX = require('xlsx');
 const { mapIndustryToSector } = require('./sectorMapper');
 const MasterDataValidationService = require('../services/masterDataValidationService');
 const StateMaster = require('../models/StateMaster');
+const SectorMaster = require('../models/SectorMaster');
 
 /**
  * Column mapping from Excel headers to database fields
@@ -122,6 +123,42 @@ const mapRowToDocument = (excelRow, sourceMonth) => {
 };
 
 /**
+ * Enriches document with ObjectId references for state and sector
+ * @param {Object} document - Database document
+ * @returns {Promise<Object>} - Document with resolved IDs
+ */
+const enrichDocumentWithIds = async (document) => {
+  try {
+    // Resolve stateId
+    if (document.state) {
+      const stateRecord = await StateMaster.findOne(
+        { name: document.state, isActive: true },
+        '_id'
+      ).lean();
+      if (stateRecord) {
+        document.stateId = stateRecord._id;
+      }
+    }
+
+    // Resolve sectorId
+    if (document.sector) {
+      const sectorRecord = await SectorMaster.findOne(
+        { name: document.sector, isActive: true },
+        '_id'
+      ).lean();
+      if (sectorRecord) {
+        document.sectorId = sectorRecord._id;
+      }
+    }
+
+    return document;
+  } catch (error) {
+    console.error('Error enriching document with IDs:', error);
+    throw error;
+  }
+};
+
+/**
  * Parses Excel file and returns processed data
  * @param {Buffer} fileBuffer - Excel file buffer
  * @param {string} sourceMonth - Source month identifier
@@ -164,7 +201,8 @@ const parseExcelFile = async (fileBuffer, sourceMonth) => {
     let invalidCount = 0;
 
     // Process each data row
-    dataRows.forEach((row, index) => {
+    for (let index = 0; index < dataRows.length; index++) {
+      const row = dataRows[index];
       const rowNumber = index + 2; // +2 because Excel rows start at 1 and we have headers
 
       // Convert array row to object using headers
@@ -179,26 +217,28 @@ const parseExcelFile = async (fileBuffer, sourceMonth) => {
       );
 
       if (isEmptyRow) {
-        return; // Skip empty rows
+        continue; // Skip empty rows
       }
 
       // Map row to document
       const document = mapRowToDocument(rowObject, sourceMonth);
+      // Enrich with ObjectId references for state and sector
+      const enrichedDocument = await enrichDocumentWithIds(document);
       // Validate row using master data
-      const validation = validateRow(document, validStates);
+      const validation = validateRow(enrichedDocument, validStates);
       if (validation.isValid) {
-        processedData.push(document);
+        processedData.push(enrichedDocument);
         validCount++;
       } else {
         errors.push({
           row: rowNumber,
-          sector: document.sector,
-          projectCode: document.projectCode,
+          sector: enrichedDocument.sector,
+          projectCode: enrichedDocument.projectCode,
           reason: validation.reason
         });
         invalidCount++;
       }
-    });
+    }
 
     return {
       success: true,

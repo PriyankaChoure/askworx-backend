@@ -17,6 +17,11 @@ const projectMasterSchema = new mongoose.Schema({
     required: true,
     // Validation done via MasterDataValidationService against active sectors
   },
+  sectorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SectorMaster',
+    optional: true
+  },
   industryRaw: {
     type: String,
     required: true,
@@ -45,6 +50,11 @@ const projectMasterSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  stateId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'StateMaster',
+    optional: true
   },
   city: {
     type: String,
