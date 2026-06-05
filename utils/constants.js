@@ -9,6 +9,8 @@ const PLAN_TYPES = {
   PLAN_3: 'PLAN_3'
 };
 
+const SECTORS = ['Industrial', 'Residential & Commercial', 'Government'];
 module.exports = {
-  PLAN_TYPES
+  PLAN_TYPES,
+  SECTORS
 };
