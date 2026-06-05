@@ -1,8 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const AuditLog = require('../models/AuditLog');
 const UserSubscription = require('../models/UserSubscription');
 const SubscriptionHelperService = require('../services/subscriptionHelperService');
+const AuditService = require('../services/auditService');
 
 const generateAccessToken = (user) => {
   return jwt.sign(
@@ -33,15 +33,15 @@ exports.login = async (req, res) => {
     const isMatch = user ? await user.comparePassword(password) : false;
     console.log('Password match:', isMatch);
     if (!user || !isMatch) {
-      // Log failed attempt
-      await AuditLog.create({
-        user: user ? user._id : null,
-        action: 'login_failed',
-        resource: 'auth',
-        details: { username },
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent'),
-      });
+      // Log failed attempt (only if user exists)
+      if (user) {
+        await AuditService.logAction({
+          userId: user._id,
+          action: 'LOGIN_FAILED',
+          resourceType: 'AUTH',
+          req
+        });
+      }
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -83,12 +83,11 @@ exports.login = async (req, res) => {
     }
 
     // Log successful login
-    await AuditLog.create({
-      user: user._id,
-      action: 'login',
-      resource: 'auth',
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent'),
+    await AuditService.logAction({
+      userId: user._id,
+      action: 'LOGIN',
+      resourceType: 'AUTH',
+      req
     });
 
     res.json({
@@ -167,10 +166,11 @@ exports.changePassword = async (req, res) => {
     await user.save();
 
     // Log password change
-    await AuditLog.create({
-      user: user._id,
-      action: 'change_password',
-      resource: 'auth',
+    await AuditService.logAction({
+      userId: user._id,
+      action: 'CHANGE_PASSWORD',
+      resourceType: 'AUTH',
+      req
     });
 
     res.json({ message: 'Password changed successfully' });
@@ -223,13 +223,11 @@ exports.resetFirstPassword = async (req, res) => {
     await user.save();
 
     // Log password reset
-    await AuditLog.create({
-      user: user._id,
-      action: 'first_password_reset',
-      resource: 'auth',
-      details: { firstLogin: true },
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent'),
+    await AuditService.logAction({
+      userId: user._id,
+      action: 'FIRST_PASSWORD_RESET',
+      resourceType: 'AUTH',
+      req
     });
 
     res.json({ 
@@ -245,12 +243,11 @@ exports.resetFirstPassword = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     // In a production app, you might want to blacklist the token or implement token revocation
-    await AuditLog.create({
-      user: req.user._id,
-      action: 'logout',
-      resource: 'auth',
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent'),
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'LOGOUT',
+      resourceType: 'AUTH',
+      req
     });
 
     res.json({ message: 'Logged out successfully' });

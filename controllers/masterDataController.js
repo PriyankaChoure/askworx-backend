@@ -1,6 +1,6 @@
 const StateMaster = require('../models/StateMaster');
 const SectorMaster = require('../models/SectorMaster');
-const AuditLog = require('../models/AuditLog');
+const AuditService = require('../services/auditService');
 
 /**
  * Master Data Controller
@@ -44,16 +44,15 @@ exports.createState = async (req, res) => {
     });
 
     await state.save();
-
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'CREATE_STATE',
-      resourceType: 'StateMaster',
+      resourceType: 'STATE',
       resourceId: state._id,
-      details: { name: state.name, code: state.code }
+      newValues: { name: state.name, code: state.code },
+      req
     });
-
     res.status(201).json({
       success: true,
       message: 'State created successfully',
@@ -172,12 +171,14 @@ exports.toggleState = async (req, res) => {
     await state.save();
 
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'TOGGLE_STATE',
-      resourceType: 'StateMaster',
+      resourceType: 'STATE',
       resourceId: state._id,
-      details: { name: state.name, previousStatus, newStatus: state.isActive }
+      previousValues: { isActive: !state.isActive },
+      newValues: { isActive: state.isActive },
+      req
     });
 
     res.json({
@@ -237,12 +238,14 @@ exports.updateState = async (req, res) => {
     await state.save();
 
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'UPDATE_STATE',
-      resourceType: 'StateMaster',
+      resourceType: 'STATE',
       resourceId: state._id,
-      details: { old: oldData, new: { name: state.name, code: state.code } }
+      previousValues: oldData,
+      newValues: { name: state.name, code: state.code },
+      req
     });
 
     res.json({
@@ -298,12 +301,13 @@ exports.createSector = async (req, res) => {
     await sector.save();
 
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'CREATE_SECTOR',
-      resourceType: 'SectorMaster',
+      resourceType: 'SECTOR',
       resourceId: sector._id,
-      details: { name: sector.name }
+      newValues: { name: sector.name },
+      req
     });
 
     res.status(201).json({
@@ -424,12 +428,14 @@ exports.toggleSector = async (req, res) => {
     await sector.save();
 
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'TOGGLE_SECTOR',
-      resourceType: 'SectorMaster',
+      resourceType: 'SECTOR',
       resourceId: sector._id,
-      details: { name: sector.name, previousStatus, newStatus: sector.isActive }
+      previousValues: { isActive: previousStatus },
+      newValues: { isActive: sector.isActive },
+      req
     });
 
     res.json({
@@ -485,12 +491,14 @@ exports.updateSector = async (req, res) => {
     await sector.save();
 
     // Audit log
-    await AuditLog.create({
+    await AuditService.logAction({
       userId: req.user._id,
       action: 'UPDATE_SECTOR',
-      resourceType: 'SectorMaster',
+      resourceType: 'SECTOR',
       resourceId: sector._id,
-      details: { old: oldData, new: { name: sector.name } }
+      previousValues: oldData,
+      newValues: { name: sector.name },
+      req
     });
 
     res.json({

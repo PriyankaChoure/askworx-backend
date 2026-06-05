@@ -2,8 +2,8 @@ const User = require('../models/User');
 const Role = require('../models/Role');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 const UserSubscription = require('../models/UserSubscription');
-const AuditLog = require('../models/AuditLog');
 const MasterDataValidationService = require('../services/masterDataValidationService');
+const AuditService = require('../services/auditService');
 
 const normalizeDateInput = (value) => {
   if (!value) return null;
@@ -121,11 +121,17 @@ exports.createUser = async (req, res) => {
     }
 
     // Log user creation
-    await AuditLog.create({
-      user: req.user._id,
-      action: 'create_user',
-      resource: 'user',
-      details: { createdUserId: user._id },
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'CREATE_USER',
+      resourceType: 'USER',
+      resourceId: user._id,
+      newValues: {
+        name: user.name,
+        email: user.email,
+        username: user.username
+      },
+      req
     });
 
     res.status(201).json({
@@ -145,7 +151,31 @@ exports.createUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
+    // Get the old user data before update
+    const oldUser = await User.findById(req.params.id);
+    const previousValues = {
+      name: oldUser.name,
+      email: oldUser.email,
+      isActive: oldUser.isActive
+    };
+
     const user = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    
+    // Log user update
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'UPDATE_USER',
+      resourceType: 'USER',
+      resourceId: user._id,
+      previousValues,
+      newValues: {
+        name: user.name,
+        email: user.email,
+        isActive: user.isActive
+      },
+      req
+    });
+    
     res.json(user);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -154,7 +184,19 @@ exports.updateUser = async (req, res) => {
 
 exports.deactivateUser = async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.params.id, { isActive: false });
+    const user = await User.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    
+    // Log user deactivation
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'UPDATE_USER',
+      resourceType: 'USER',
+      resourceId: user._id,
+      previousValues: { isActive: true },
+      newValues: { isActive: false },
+      req
+    });
+    
     res.json({ message: 'User deactivated' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -167,6 +209,17 @@ exports.resetUserPassword = async (req, res) => {
     user.mustResetPassword = true;
     user.password = 'TempPass123!'; // Generate a temp password
     await user.save();
+    
+    // Log password reset
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'UPDATE_USER',
+      resourceType: 'USER',
+      resourceId: user._id,
+      newValues: { mustResetPassword: true },
+      req
+    });
+    
     res.json({ message: 'Password reset initiated' });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -274,6 +327,22 @@ exports.assignPlan = async (req, res) => {
     if (isTrial) userUpdates.isFreeSubscriber = true;
     await User.findByIdAndUpdate(userId, userUpdates);
 
+    // Log subscription assignment
+    await AuditService.logAction({
+      userId: req.user._id,
+      action: 'CREATE_SUBSCRIPTION',
+      resourceType: 'SUBSCRIPTION',
+      resourceId: subscription._id,
+      newValues: {
+        userId,
+        planId,
+        startDate: start,
+        endDate: end,
+        isTrial
+      },
+      req
+    });
+
     res.json({ message: 'Plan assigned successfully' });
   } catch (error) {
     console.error('Assign plan error:', error);
@@ -283,8 +352,15 @@ exports.assignPlan = async (req, res) => {
 
 exports.getAuditLogs = async (req, res) => {
   try {
-    const logs = await AuditLog.find().populate('user').sort({ createdAt: -1 });
-    res.json(logs);
+    const { userId, action, resourceType, page = 1, limit = 20 } = req.query;
+    
+    const filters = { page, limit };
+    if (userId) filters.userId = userId;
+    if (action) filters.action = action;
+    if (resourceType) filters.resourceType = resourceType;
+    
+    const result = await AuditService.getAuditLogs(filters);
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
   }
