@@ -1,5 +1,6 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
+const connectDB = require("../config/db");
 
 // 🔐 Prevent seeding in production
 if (process.env.NODE_ENV === "production") {
@@ -9,8 +10,9 @@ if (process.env.NODE_ENV === "production") {
 
 const runSeed = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ MongoDB Connected for Seeding");
+    console.log("🌱 Starting seeding process...");
+    const conn = await connectDB();
+    // console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
 
     // Import seed files
     await require("./seedMasterData")();
