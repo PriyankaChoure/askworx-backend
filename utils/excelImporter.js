@@ -20,6 +20,7 @@ const COLUMN_MAPPING = {
   'Country': 'country',
   'State': 'state',
   'City': 'city',
+  'Sector': 'sector',
   'Capacity': 'capacity',
   'Place of Work': 'placeOfWork',
   'Project Details': 'projectDetails',
@@ -113,7 +114,7 @@ const mapRowToDocument = (excelRow, sourceMonth) => {
   });
 
   // Derive sector from industry
-  document.sector = mapIndustryToSector(document.industryRaw);
+  // document.sector = mapIndustryToSector(document.industryRaw);
 
   // Add system fields
   document.sourceMonth = sourceMonth;
