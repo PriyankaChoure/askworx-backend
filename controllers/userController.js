@@ -75,7 +75,7 @@ exports.getProjects = async (req, res) => {
         filter.state = { $in: statesArray };
       }
     }
-    console.info('filter -', filter);
+    console.info('filter to get projects-', filter);
     // // Handle single state filter
     // if (state) filter.state = state;
     // if (status) filter.status = status;
@@ -147,26 +147,38 @@ exports.exportProjectsToExcel = async (req, res) => {
     }
 
     const XLSX = require('xlsx');
-    const { months, sectors } = req.query;
+    const { states, fromDate, toDate, sectors } = req.query;
 
     // Build base filter
     const filter = { isActive: true };
 
-    // Handle multi-select months
-    if (months) {
-      const monthArray = Array.isArray(months) ? months : [months];
-      if (monthArray.length > 0) {
-        filter.sourceMonth = { $in: monthArray };
+    // handle date range filtering
+    if (fromDate || toDate) {
+      filter.updatedDate = {};
+      if (fromDate) {
+        filter.updatedDate.$gte = new Date(fromDate);
+      }
+      if (toDate) {
+        filter.updatedDate.$lte = new Date(toDate);
       }
     }
 
-    // Handle multi-select sectors
+    // Handle multi-select sectors (array)
     if (sectors) {
       const sectorArray = Array.isArray(sectors) ? sectors : [sectors];
       if (sectorArray.length > 0) {
         filter.sector = { $in: sectorArray };
       }
     }
+
+    // Handle multi-select states (array)
+    if (states) {
+      const statesArray = Array.isArray(states) ? states : [states];
+      if (statesArray.length > 0) {
+        filter.state = { $in: statesArray };
+      }
+    }
+    console.info('filter for download excel-', filter);
 
     // Get all projects matching filters
     const allProjects = await ProjectMaster
@@ -224,7 +236,7 @@ exports.exportProjectsToExcel = async (req, res) => {
     // Send file
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    
+
     XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
     const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
     res.send(buffer);
