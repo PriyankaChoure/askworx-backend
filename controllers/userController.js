@@ -44,16 +44,19 @@ exports.getSubscription = async (req, res) => {
 
 exports.getProjects = async (req, res) => {
   try {
-    const { states, months, sectors, page = 1, limit = 50 } = req.query;
+    const { states, fromDate, toDate, sectors, page = 1, limit = 50 } = req.query;
     console.info('request-', states, sectors);
     // Build base filter
     const filter = { isActive: true };
 
-    // Handle multi-select months (array)
-    if (months) {
-      const monthArray = Array.isArray(months) ? months : [months];
-      if (monthArray.length > 0) {
-        filter.sourceMonth = { $in: monthArray };
+    // handle date range filtering
+    if (fromDate || toDate) {
+      filter.updatedDate = {};
+      if (fromDate) {
+        filter.updatedDate.$gte = new Date(fromDate);
+      }
+      if (toDate) {
+        filter.updatedDate.$lte = new Date(toDate);
       }
     }
 
@@ -81,7 +84,6 @@ exports.getProjects = async (req, res) => {
     const allProjects = await ProjectMaster
       .find(filter)
       .sort({ updatedAt: -1 });
-    console.info('allProjects -', allProjects);
     // Apply subscription-based filtering (respects subscription rules)
     // const allProjects = filterDataBySubscription(allProjects, req.subscription);
 

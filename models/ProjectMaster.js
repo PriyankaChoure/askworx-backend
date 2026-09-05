@@ -89,7 +89,9 @@ const projectMasterSchema = new mongoose.Schema({
     trim: true
   },
   updatedDate: {
-    type: Date
+    type: Date,
+    required: true,
+    default: Date.now
   },
   expectedCompletionDate: {
     type: Date
