@@ -1,8 +1,10 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const UserSubscription = require('../models/UserSubscription');
 const SubscriptionHelperService = require('../services/subscriptionHelperService');
 const AuditService = require('../services/auditService');
+const sendEmail = require('../utils/sendEmail');
 
 const generateAccessToken = (user) => {
   return jwt.sign(
@@ -23,15 +25,12 @@ const generateRefreshToken = (user) => {
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
-    console.log('Login attempt for user:', username, password);
     if (!username || !password) {
       return res.status(400).json({ message: 'Username and password are required' });
     }
 
     const user = await User.findOne({ username }).populate('role');
-    console.log('User found:', user ? user : 'none');
     const isMatch = user ? await user.comparePassword(password) : false;
-    console.log('Password match:', isMatch);
     if (!user || !isMatch) {
       // Log failed attempt (only if user exists)
       if (user) {
@@ -254,5 +253,109 @@ exports.logout = async (req, res) => {
   } catch (error) {
     console.error('Logout error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// POST /auth/forgot-password
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log('Forgot password request for email:', email);
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    // IMPORTANT: always respond with the same generic message whether or not
+    // the user exists — this avoids leaking which emails are registered.
+    const genericResponse = {
+      message: 'If an account with that email exists, a password reset link has been sent.'
+    };
+    console.log('User found for forgot password:', user ? user._id : 'No user found');
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Generate a random token; store only its HASH in the DB.
+    // The raw token is what goes in the email link — this way, even if the
+    // DB is compromised, the stored value can't be used as a working token.
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 minutes
+    await user.save();
+
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${rawToken}`;
+
+    try {
+      console.log(`Attempting to send password reset email to ${user.email} with reset URL: ${resetUrl}`);
+      await sendEmail({
+        to: user.email,
+        subject: 'Password reset request',
+        html: `
+          <p>You requested a password reset.</p>
+          <p><a href="${resetUrl}">Click here to reset your password</a> (expires in 30 minutes).</p>
+          <p>If you didn't request this, you can safely ignore this email.</p>
+        `
+      });
+    } catch (emailErr) {
+      // Don't leave a dangling token if the email failed to send
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save();
+      console.error('Failed to send reset email:', emailErr);
+      return res.status(500).json({ message: 'Could not send reset email. Please try again later.' });
+    }
+
+    // Log reset request, matching the audit pattern used elsewhere in this controller
+    await AuditService.logAction({
+      userId: user._id,
+      action: 'FORGOT_PASSWORD_REQUEST',
+      resourceType: 'AUTH',
+      req
+    });
+
+    return res.status(200).json(genericResponse);
+  } catch (err) {
+    console.error('forgotPassword error:', err);
+    return res.status(500).json({ message: 'Something went wrong. Please try again later.' });
+  }
+};
+
+// POST /auth/reset-password/:token
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Reset link is invalid or has expired.' });
+    }
+
+    // Assign the PLAIN password and let the pre('save') hook in User.js hash it —
+    // same pattern as changePassword/resetFirstPassword above. Hashing it here too
+    // (as the previous draft did) would double-hash it and lock the user out.
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    user.mustResetPassword = false;
+    await user.save();
+
+    await AuditService.logAction({
+      userId: user._id,
+      action: 'PASSWORD_RESET',
+      resourceType: 'AUTH',
+      req
+    });
+
+    return res.status(200).json({ message: 'Password has been reset successfully. Please log in.' });
+  } catch (err) {
+    console.error('resetPassword error:', err);
+    return res.status(500).json({ message: 'Something went wrong. Please try again later.' });
   }
 };

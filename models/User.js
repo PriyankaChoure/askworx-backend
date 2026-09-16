@@ -17,6 +17,11 @@ const userSchema = new mongoose.Schema({
   // free/trial users cannot download data
   isFreeSubscriber: { type: Boolean, default: false },
 
+  // Forgot-password flow: hashed token + expiry. Never store the raw token —
+  // only its SHA-256 hash, so a DB leak alone can't be used to reset a password.
+  resetPasswordToken: { type: String },
+  resetPasswordExpire: { type: Date },
+
   // allowedSectors: {type: Array},
   // allowedStates: { type: Array},
   createdAt: { type: Date, default: Date.now },

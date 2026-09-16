@@ -17,6 +17,14 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+// Shared password strength rule (was duplicated 2x before — now reused everywhere a new password is set)
+const strongPassword = (field) =>
+  body(field)
+    .isLength({ min: 8 })
+    .withMessage(`${field} must be at least 8 characters`)
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage(`${field} must contain at least one uppercase letter, one lowercase letter, and one number`);
+
 // Login
 router.post('/login', [
   body('username')
@@ -42,11 +50,7 @@ router.post('/reset-first-password', [
   body('userId')
     .isMongoId()
     .withMessage('Valid user ID is required'),
-  body('newPassword')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  strongPassword('newPassword'),
   body('confirmPassword')
     .notEmpty()
     .withMessage('Confirm password is required'),
@@ -57,12 +61,29 @@ router.post('/change-password', auth, [
   body('currentPassword')
     .notEmpty()
     .withMessage('Current password is required'),
-  body('newPassword')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  strongPassword('newPassword'),
 ], handleValidationErrors, authController.changePassword);
+// --- Forgot password flow ---
+
+// Step 1: request a reset link (sent to the user's registered email)
+router.post('/forgot-password', [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Enter a valid email address'),
+], handleValidationErrors, authController.forgotPassword);
+
+// Step 2: submit new password using the token from the emailed link
+router.post('/reset-password/:token', [
+  strongPassword('newPassword'),
+  body('confirmPassword')
+    .notEmpty()
+    .withMessage('Confirm password is required')
+    .custom((value, { req }) => value === req.body.newPassword)
+    .withMessage('Passwords do not match'),
+], handleValidationErrors, authController.resetPassword);
 
 // Logout
 router.post('/logout', auth, authController.logout);
